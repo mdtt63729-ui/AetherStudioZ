@@ -1,0 +1,12 @@
+package dev.aetherstudioz.ui.platform
+
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+
+actual val isMobilePlatform: Boolean = true
+
+actual val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+
+actual fun nowMillis(): Long = System.currentTimeMillis()
+
+actual fun localHourOfDay(): Int = java.time.LocalTime.now().hour

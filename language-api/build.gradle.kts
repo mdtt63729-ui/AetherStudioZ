@@ -1,0 +1,18 @@
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    `java-library`
+    // Published for plugin authors to compile against; see the convention plugin for the coordinate.
+    id("dev.aetherstudioz.spi-publish")
+}
+
+// language-api -> project-model-api, vfs-api, platform-core. ClasspathSnapshot, VirtualFile and
+// LanguageLevel appear in the LanguageBackend / CompilationContext SPIs, so all three are `api`.
+dependencies {
+    api(project(":project-model-api"))
+    api(project(":vfs-api"))
+    api(project(":platform-core"))
+
+    // ModuleCompilationContext binds analysis to the model, so its test needs a real workspace to bind to.
+    // Test-only, so the published module still depends on the api alone (test -> impl stays acyclic).
+    testImplementation(project(":project-model-impl"))
+}

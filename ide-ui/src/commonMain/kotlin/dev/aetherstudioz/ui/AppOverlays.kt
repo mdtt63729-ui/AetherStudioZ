@@ -1,0 +1,94 @@
+package dev.aetherstudioz.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import dev.aetherstudioz.ui.backend.FileActions
+import dev.aetherstudioz.ui.backend.IdeBackend
+import dev.aetherstudioz.ui.components.AnalyticsConsentSheet
+import dev.aetherstudioz.ui.components.BetaInfo
+import dev.aetherstudioz.ui.components.BuildNotificationGate
+import dev.aetherstudioz.ui.components.BusyOverlay
+import dev.aetherstudioz.ui.components.ErrorDialog
+import dev.aetherstudioz.ui.components.MigrationNotice
+import dev.aetherstudioz.ui.components.OnboardingSheet
+import dev.aetherstudioz.ui.components.PermissionDialog
+import dev.aetherstudioz.ui.components.RunConflictDialog
+import dev.aetherstudioz.ui.ext.OverlayContext
+import dev.aetherstudioz.ui.ext.OverlayRegistry
+import dev.aetherstudioz.ui.generated.resources.Res
+import dev.aetherstudioz.ui.generated.resources.import_gradle_busy
+import dev.aetherstudioz.ui.screens.ImportErrorDialog
+import org.jetbrains.compose.resources.stringResource
+
+/**
+ * The app-wide overlays layered over the current screen, split out of [AetherStudioZApp] so its body stays
+ * navigation + layout. Two groups: the one-at-a-time first-launch sheets (build-system migration notice, the
+ * onboarding tour, analytics consent) shown only over the project picker ([onPicker]); and the always-on
+ * dialogs (run-sandbox permission prompt, first-build notification gate, run-conflict confirmation, the
+ * non-fatal error dialog, and the unrecognized-`.caproj` notice). Each is an already-encapsulated composable;
+ * this only gates visibility and wires the callbacks.
+ */
+@Composable
+internal fun AppOverlays(
+    backend: IdeBackend,
+    state: IdeUiState,
+    fileActions: FileActions,
+    /** True when the picker landing is showing — the only place the first-launch sheets appear. */
+    onPicker: Boolean,
+    showMigration: Boolean,
+    onBackup: suspend () -> Unit,
+    onDismissMigration: () -> Unit,
+    showOnboarding: Boolean,
+    onGetStarted: () -> Unit,
+    onFinishOnboarding: () -> Unit,
+    showAnalytics: Boolean,
+    onAllowAnalytics: () -> Unit,
+    onDeclineAnalytics: () -> Unit,
+    importError: String?,
+    onDismissImportError: () -> Unit,
+    /** True while a picked Gradle folder is being copied + imported — shows the blocking busy overlay. */
+    importBusy: Boolean = false,
+) {
+    // Upgrade notice first (the build-system migration warning), then the feature tour — both over the picker
+    // only, one at a time.
+    MigrationNotice(visible = showMigration && onPicker, onBackup = onBackup, onDismiss = onDismissMigration)
+    OnboardingSheet(
+        visible = showOnboarding && !showMigration && onPicker,
+        // Final CTA: send the user straight into the Create-Project flow so the tour ends on a concrete action.
+        onGetStarted = onGetStarted,
+        onFinish = onFinishOnboarding,
+    )
+    // Opt-in analytics consent — last of the first-launch sheets, after onboarding/migration.
+    AnalyticsConsentSheet(
+        visible = showAnalytics && !showOnboarding && !showMigration && onPicker,
+        onAllow = onAllowAnalytics,
+        onDecline = onDeclineAnalytics,
+        onLearnMore = if (fileActions.canOpenUrl) ({ fileActions.openUrl(BetaInfo.PRIVACY_URL) }) else null,
+    )
+    // The run sandbox's permission prompt — overlays everything while a guarded program is blocked.
+    PermissionDialog(backend)
+    // Plugin-contributed app-wide overlays (e.g. the AI agent's write-permission prompt). Each decides its own
+    // visibility (typically observing a backend flow). Registered via UiPlugin's `overlay { }` and populated
+    // once UiPluginHost has loaded — a disabled plugin contributes none.
+    val navigate = LocalPluginNavigator.current
+    val openInEditor = LocalPluginFileOpener.current
+    val overlayCtx = remember(backend, navigate, openInEditor) {
+        object : OverlayContext {
+            override val backend = backend
+            override fun openScreen(id: String) = navigate(id)
+            override fun openFile(path: String, offset: Int) = openInEditor(path, offset)
+        }
+    }
+    OverlayRegistry.all().forEach { it.content(overlayCtx) }
+    // First-build notification-permission gate — asks for the permission the isolated build process needs, and
+    // falls back to in-process builds (with an explanation) if declined. No-op after the one-time prompt.
+    BuildNotificationGate(state)
+    // "Already running" confirmation — raised when a new Run is requested while a build/program is in flight.
+    RunConflictDialog(state)
+    // IntelliJ-style non-fatal error dialog — overlays everything when the engine reports an unexpected error.
+    ErrorDialog(backend)
+    // "Unrecognized file" notice when a picked/opened file wasn't a readable .caproj package.
+    ImportErrorDialog(importError, onDismissImportError)
+    // Blocking spinner while a Gradle folder is being copied in + imported (no cancel point).
+    BusyOverlay(visible = importBusy, label = stringResource(Res.string.import_gradle_busy))
+}
