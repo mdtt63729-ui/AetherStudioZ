@@ -11,7 +11,8 @@ dependencies {
     // (which the rewrite passes use). Both compileOnly: AGP ships them on the instrumentation runtime — AGP
     // bundles org.ow2.asm itself — so bundling our own copies would clash. Keep the versions aligned with
     // `agp` / `asm` in gradle/libs.versions.toml.
-    compileOnly("com.android.tools.build:gradle-api:9.2.1")
+    // Use the full AGP artifact so Gradle resolves types like BaseExtension and the variant/instrumentation APIs.
+    compileOnly("com.android.tools.build:gradle:9.2.1")
     compileOnly("org.ow2.asm:asm:9.7")
     compileOnly("org.ow2.asm:asm-commons:9.7")
     compileOnly("org.ow2.asm:asm-tree:9.7") // ClassNode/MethodNode — body-replacement passes
